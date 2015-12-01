@@ -3,7 +3,7 @@
 //多次Env.require同一个js（不管用相对还是绝对），只有第一次会加载，所以不会重复。
 
 //程序最后发行的版本，用于作为缓存键的前缀，快速更新缓存
-var envLastVer = '2014_11_17_17_03';
+var envLastVer = '2015_11_17_17_03';
 
 //用于存放通道名称及通信对象的类，这样可以通过不同通道名称来区分不同的通信对象  
 function HttpRequestObject() {
@@ -15,6 +15,8 @@ function HttpRequestObject() {
 function HttpGetObject() {
     this.url = null;        //要下载的文件路径
     this.cache_key = null;  //缓存键
+    this.version = null;
+    this.index = null;      //config文件里面的下表0开始     
     this.chunnel = null;    //通道名
     this.type = null;       //类型，js或css
     this.is_fill = false;   //内容是否被填充
@@ -22,7 +24,7 @@ function HttpGetObject() {
 }
 
 //通信处理类，可以静态引用其中的方法  
-var Request = new function () {
+var Request = new function (){
 
     //通信类的缓存  
     this.httpRequestCache = new Array();
@@ -121,6 +123,7 @@ var Request = new function () {
                 {
                     if (instance.status == 200) // 信息已经成功返回，开始处理信息  
                     {
+                        
                         _processRequest(instance, _paraObj);
                     }
                     else {
@@ -147,38 +150,24 @@ var Request = new function () {
             instance.send(_data);
         }
         if (_asynchronous == false && typeof (_processRequest) == "function") {
-            _processRequest(instance, _paraObj);
+            if(instance.status != 200){
+                  return console.log(instance.responseURL +" is "+instance.statusText);
+            }
+           
+           _processRequest(instance, _paraObj);
         }
     }
 }
 
-/*var Env = new function () {
+function Env(fileset) {
     this.needLoadObject = new Array();
-
+    
     //获取env.js文件所在路径 
     this.envPath = null;
-    this.getPath = function () {
-        this.envPath = document.location.pathname;
-        this.envPath = this.envPath.substring(0, this.envPath.lastIndexOf("/") + 1);
-        var _scripts = document.getElementsByTagName("script");
-        var _envPath = null;
-        var _scriptSrc = null;
-        for (var i = 0; i < _scripts.length; i++) {
-            _scriptSrc = _scripts[i].getAttribute("src");
-            if (_scriptSrc && _scriptSrc.indexOf("env.js") != -1) {
-                break;
-            }
-        }
-        if (_scriptSrc != null) {
-            if (_scriptSrc.charAt(0) == '/') {
-                this.envPath = _scriptSrc.substr(0, _scriptSrc.length - 6);
-            }
-            else {
-                this.envPath = this.envPath + _scriptSrc.substr(0, _scriptSrc.length - 6);
-            }
-        }
-    }
-    this.getPath();
+    this.envPath ="http://" + window.location.host;
+    
+    this.fileSet = fileset;
+    
 
     //获取文件后缀名
     this.getFileExt = function (fileUrl) {
@@ -187,7 +176,7 @@ var Request = new function () {
     }
 
     //依次放入要载入的文件
-    this.pushNeedLoad = function (url) {
+    this.pushNeedLoad = function (moduleName,version,url,index) {
         var _absUrl = null;
         if (url.charAt(0) == '/')
             _absUrl = url;
@@ -196,13 +185,30 @@ var Request = new function () {
 
         var object = new HttpGetObject();
         object.url = _absUrl;
-        object.cache_key = envLastVer + _absUrl;    //利用版本号+绝对路径生成缓存键
+        object.cache_key = moduleName;    //模块名
         object.chunnel = 'ch' + (this.needLoadObject.length + 1);
         object.type = this.getFileExt(_absUrl);
-
-        //尝试从缓存获取
-        var cacheContent = localStorage.getItem(object.cache_key);
-        if (cacheContent) { object.is_fill = true; }
+        object.version = version;
+        object.index = index;
+        //尝试从缓存获取 (version)
+         
+        var cacheContentVsersion = localStorage.getItem(object.cache_key);
+        if (cacheContentVsersion) { 
+             if(cacheContentVsersion == object.version){
+                 var cacheContent = localStorage.getItem(object.cache_key+"?version="+object.version+"_"+object.index);
+                 if(cacheContent){
+                     object.is_fill = true; // 是否需要请求加载
+                 }
+             }else{
+                 
+                 localStorage.removeItem(object.cache_key);
+                 var module = this.fileSet[object.cache_key];
+                 for(var i=0;i<module.length;i++){
+                  localStorage.removeItem(object.cache_key+"?version="+cacheContentVsersion+"_"+i);
+                 }
+             }
+            
+        }
 
         this.needLoadObject.push(object);
         return this;
@@ -213,7 +219,10 @@ var Request = new function () {
         for (var i = 0; i < this.needLoadObject.length; i++) {
             var item = this.needLoadObject[i];
             var processGet = function (_instance, _paraObj) {
-                localStorage.setItem(_paraObj.cache_key, _instance.responseText);    //缓存文件
+                //console.log(_instance);
+               // console.log(_paraObj);
+                localStorage.setItem(_paraObj.cache_key,_paraObj.version);    //缓存文件
+                localStorage.setItem(_paraObj.cache_key+"?version="+_paraObj.version+"_"+_paraObj.index, _instance.responseText);    //缓存文件
                 _paraObj.is_fill = true;
             }
             if (item.is_fill == false) {
@@ -236,94 +245,52 @@ var Request = new function () {
         for (var i = 0; i < this.needLoadObject.length; i++) {
             var item = this.needLoadObject[i];
             if (item.is_exec == false) {
+                 // console.log(item)
                 if (item.type == '.js') {
-                    runJs(localStorage.getItem(item.cache_key));
+                    runJs(localStorage.getItem(item.cache_key+"?version="+item.version+"_"+item.index));
                     item.is_exec = true;  //标记已执行，下次不会再执行
                 }
                 else if (item.type == '.css') {
-                    runCss(localStorage.getItem(item.cache_key));
+                    runCss(localStorage.getItem(item.cache_key+"?version="+item.version+"_"+item.index));
                     item.is_exec = true;  //标记已执行，下次不会再执行
                 }
             }
         }
     }
-}*/
-
-
-
-var Env = new function () {
-    this.needLoadObject = new Array();
-    this.config = window.config;
-    //获取env.js文件所在路径 
-    this.envPath = null;
-    this.getPath = 11;
-    console.log(this.config);
-
-    //获取文件后缀名
-    this.getFileExt = function (fileUrl) {
-        var d = /\.[^\.]+$/.exec(fileUrl);
-        return d.toString().toLowerCase();
-    }
-
-    //依次放入要载入的文件
-    this.pushNeedLoad = function (url) {
-        var _absUrl = null;
-        if (url.charAt(0) == '/')
-            _absUrl = url;
-        else
-            _absUrl = this.envPath + url;
-
-        var object = new HttpGetObject();
-        object.url = _absUrl;
-        object.cache_key = envLastVer + _absUrl;    //利用版本号+绝对路径生成缓存键
-        object.chunnel = 'ch' + (this.needLoadObject.length + 1);
-        object.type = this.getFileExt(_absUrl);
-
-        //尝试从缓存获取
-        var cacheContent = localStorage.getItem(object.cache_key);
-        if (cacheContent) { object.is_fill = true; }
-
-        this.needLoadObject.push(object);
-        return this;
-    }
-
-    //依次装载要处理的文件
-    this.batchLoad = function () {
-        for (var i = 0; i < this.needLoadObject.length; i++) {
-            var item = this.needLoadObject[i];
-            var processGet = function (_instance, _paraObj) {
-                localStorage.setItem(_paraObj.cache_key, _instance.responseText);    //缓存文件
-                _paraObj.is_fill = true;
-            }
-            if (item.is_fill == false) {
-                Request.send(item.url, "", processGet, item.chunnel, false, item);  //采用同步方式载入
-            }
+    this.checkVersion = function(){
+        var localVersion = localStorage.getItem("version");
+        if(localVersion && localVersion == envLastVer){
+        return
         }
-        return this;
-    }
-
-    //依次执行要处理的文件
-    this.batchExec = function () {
-        var runCss = function (_css) { document.write('<style type="text/css">' + _css + '</style>'); }
-        var runJs = function (_js) {
-            if (window.execScript)
-                window.execScript(_js);
-            else
-                window.eval(_js);
-        }
-        //依次执行，由于js为单线程执行，每执行一个js都会阻塞其它，所以可以保证顺序执行
-        for (var i = 0; i < this.needLoadObject.length; i++) {
-            var item = this.needLoadObject[i];
-            if (item.is_exec == false) {
-                if (item.type == '.js') {
-                    runJs(localStorage.getItem(item.cache_key));
-                    item.is_exec = true;  //标记已执行，下次不会再执行
-                }
-                else if (item.type == '.css') {
-                    runCss(localStorage.getItem(item.cache_key));
-                    item.is_exec = true;  //标记已执行，下次不会再执行
-                }
-            }
-        }
-    }
+        localStorage.clear();
+        localStorage.setItem("version",envLastVer);
+    };
+    return this.checkVersion();
 }
+
+ 
+(function(win){
+    var times = new Date();
+    times = times.getDate();
+        var fileMap = win.fileMap,
+            needLoadModuleName = fileMap.getNeedLoadModuleName(),
+            moduleVersionSet = fileMap.getVersion(),
+            needLoadFile = fileMap.getNeedLoadFileSet();
+     var env = new Env(needLoadFile);
+        for(var index in needLoadModuleName){
+            var moduleName = needLoadModuleName[index];
+            var moduleVersion = moduleVersionSet[moduleName];
+            var item = needLoadFile[moduleName];
+            
+            for(var index2 in item){
+                env.pushNeedLoad(moduleName,moduleVersion,item[index2],index2);
+            }
+        }
+        
+    env.batchLoad().batchExec();
+    var newtime = new Date()
+    newtime = newtime.getDate()
+    
+    console.log(times - newtime)
+    
+})(window)
