@@ -273,9 +273,9 @@ function Env(fileset) {
     var times = new Date();
     times = times.getDate();
         var fileMap = win.fileMap,
-            needLoadModuleName = fileMap.getNeedLoadModuleName(),
-            moduleVersionSet = fileMap.getVersion(),
-            needLoadFile = fileMap.getNeedLoadFileSet();
+            needLoadModuleName = fileMap.moduleNameSet,
+            moduleVersionSet = fileMap.versionSet,
+            needLoadFile = fileMap.needLoadFileSet;
      var env = new Env(needLoadFile);
         for(var index in needLoadModuleName){
             var moduleName = needLoadModuleName[index];

@@ -43,15 +43,9 @@ var fileMap = function(){
     fileMap.prototype={
         initData:function(){//初始化改页面需要的 模块配置
             this.htmlName = win.htmlName || "";
-            this.moduleFileSet={};
-            var config = this.config;
-            for(var key in config.global){
-               // console.log(key)
-                var jsonNode = this.JsonNode(config.global[key],key,["js","css"]);
-                this.moduleFileSet[key] = jsonNode;
-                //console.log(this.JsonNode(config.global[key],["js","css"]))
-            }
-            this.moduleFileSet[this.htmlName] =this.JsonNode(config.modules[this.htmlName],this.htmlName,["js","css"]);
+            this.needLoadFileSet = this.getNeedLoadFileSet();
+            this.versionSet = this.getVersion();
+            this.moduleNameSet = this.getNeedLoadModuleName();
             /* for(var key in this.moduleFileSet)
              {
                 console.log(key);
@@ -61,11 +55,14 @@ var fileMap = function(){
         getBasePath:function(){//返回路径
             return this.config.basePath;
         },
+        /**  
+        * 返回{模块名：[js文件url , css文件url]
+        */
         getNeedLoadFileSet:function(){//根据检测版本返回的数组 返回需要更新的模块 url的json
             var needupdate = this.getNeedLoadModuleName();//[模块名]
                 resultSet = {};
             
-            var moduleFileSet = this.moduleFileSet;
+            var moduleFileSet = this.getModuleChildrenSet();
             for(var index in needupdate){
                 var fileSet = [],
                     moduleName = needupdate[index],
@@ -88,7 +85,7 @@ var fileMap = function(){
             return this.config.modulesMap[key];
         },
             /**  
-            * 客户端向服务端发送请求  
+            * 将对象中的 node 节点 重新封装成新的数组返回
             * @param jsonObj:目标json对象  
             * @param newObjName:新的json名字  
             * @param node:从jsonObj哪些节点提取组合
@@ -97,6 +94,9 @@ var fileMap = function(){
             var innerJson = jsonObj,
                 node = node || [],
                 resultJson = [];
+            if(jsonObj == undefined){
+                return
+            }
             for(var index in node){
                 if(jsonObj[node[index]]){
                    // console.log(jsonObj[node[index]]);
@@ -109,21 +109,25 @@ var fileMap = function(){
             return resultJson;
             
         },
-            /**  
-            * 获取模块版本json 
-            */
+        /**  
+        * 获取从模块版本json 
+        */
         getVersion:function(){
-            var resultSet = {};
-            
-            var config = this.config;
+            var resultSet = {},
+                config = this.config,
+                htmlModule = config.modules[this.htmlName];
             
             for(var key in config.global){
-                    resultSet[key]=config.global[key].version;
+                resultSet[key]=config.global[key].version;
             }
-            resultSet[this.htmlName]=config.modules[this.htmlName].version
-            
+            if(this.htmlName != undefined && this.htmlName != ""){
+                resultSet[this.htmlName]=htmlModule != undefined?htmlModule.version : null;
+            }
             return resultSet;
         },
+        /**  
+        * 从config中获取需要加载的模块名，return []
+        */
         getNeedLoadModuleName:function(){
             var resultSet = [];
             var config = this.config;
@@ -131,6 +135,21 @@ var fileMap = function(){
                     resultSet.push(key)
             }
             resultSet.push(this.htmlName);
+            return resultSet;
+        },
+         /**  
+        * 从config获取模块js css 模块名集合，return []（js css组合成一个数据）
+        */
+        getModuleChildrenSet:function(){
+            var config = this.config,
+                resultSet={};
+            for(var key in config.global){
+               // console.log(key)
+                var jsonNode = this.JsonNode(config.global[key],key,["js","css"]);
+                resultSet[key] = jsonNode;
+                //console.log(this.JsonNode(config.global[key],["js","css"]))
+            }
+            resultSet[this.htmlName] =this.JsonNode(config.modules[this.htmlName],this.htmlName,["js","css"]);
             return resultSet;
         }
         
